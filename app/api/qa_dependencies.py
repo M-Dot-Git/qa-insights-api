@@ -1,9 +1,12 @@
+import logging
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError, PyJWKClientError
 
 from ..core.keycloak import KeycloakUnavailableError, User, user_from_access_token
 
+logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -24,6 +27,7 @@ def get_current_user(
             detail="Keycloak authentication is temporarily unavailable.",
         ) from error
     except (InvalidTokenError, PyJWKClientError) as error:
+        logger.warning("Rejected Keycloak access token (%s)", type(error).__name__)
         raise HTTPException(
             status_code=401,
             detail="The Keycloak access token is invalid or expired.",

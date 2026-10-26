@@ -6,6 +6,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import app.core.keycloak as keycloak
+from app.core.config import KEYCLOAK_API_AUDIENCE
 
 
 def install_signing_key(monkeypatch: pytest.MonkeyPatch, public_key) -> None:
@@ -35,7 +36,7 @@ def access_token(private_key, **overrides: object) -> str:
     now = datetime.now(timezone.utc)
     claims = {
         "iss": "http://localhost:8080/realms/qa-pulse",
-        "aud": "qa-insights-api",
+        "aud": KEYCLOAK_API_AUDIENCE,
         "sub": "keycloak-user-id",
         "iat": now,
         "exp": now + timedelta(minutes=5),

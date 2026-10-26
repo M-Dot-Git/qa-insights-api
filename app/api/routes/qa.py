@@ -136,25 +136,3 @@ def get_test_case(
     if case is None:
         raise HTTPException(status_code=404, detail="Test case not found.")
     return {"testCase": case}
-
-
-@router.get("/admin/overview")
-def admin_overview(
-    _: User = Depends(require_roles("ADMIN")),
-) -> dict:
-    return {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "systemHealth": RANDOM.choice(["Healthy", "Degraded"]),
-        "activeUsers": RANDOM.randint(3, 42),
-        "auditActivity": [
-            {
-                "id": f"AUD-{RANDOM.randint(1000, 9999)}",
-                "action": RANDOM.choice(
-                    ["Signed in", "Changed a preference", "Viewed a report"]
-                ),
-                "actor": f"qa-user-{RANDOM.randint(1, 20)}",
-                "occurredAt": _iso_time(RANDOM.randint(1, 10080)),
-            }
-            for _ in range(5)
-        ],
-    }

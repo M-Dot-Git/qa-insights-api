@@ -4,13 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.api.qa_dependencies as qa_dependencies
-import app.api.routes.qa_auth as qa_auth_route
-import app.api.routes.qa_users as qa_users_route
 from app.core.keycloak import User
-from app.core.keycloak_admin import (
-    DuplicateUserError,
-    RegistrationNotFoundError,
-)
 from app.main import app
 
 
@@ -81,13 +75,12 @@ def test_unassigned_user_has_no_role_and_cannot_open_test_explorer(
     assert client.get("/api/qa/dashboard", headers=bearer("unassigned")).status_code == 403
 
 
-def test_qa_engineer_can_use_qa_workflows_but_not_admin(client: TestClient) -> None:
+def test_qa_engineer_can_use_qa_workflows(client: TestClient) -> None:
     profile = client.get("/api/qa/auth/session", headers=bearer("engineer"))
     assert profile.status_code == 200
     assert profile.json()["user"]["roles"] == ["QA_ENGINEER"]
     assert client.get("/api/qa/dashboard", headers=bearer("engineer")).status_code == 200
     assert client.get("/api/qa/test-cases", headers=bearer("engineer")).status_code == 200
-    assert client.get("/api/qa/admin/overview", headers=bearer("engineer")).status_code == 403
 
 
 def test_qa_endpoints_require_bearer_and_preserve_role_access(
@@ -114,14 +107,6 @@ def test_qa_endpoints_require_bearer_and_preserve_role_access(
     assert client.get("/api/qa/test-cases", headers=bearer("viewer")).status_code == 403
 
 
-def test_admin_route_requires_admin_realm_role(client: TestClient) -> None:
-    assert client.get("/api/qa/admin/overview", headers=bearer("manager")).status_code == 403
-    response = client.get("/api/qa/admin/overview", headers=bearer("admin"))
-
-    assert response.status_code == 200
-    assert set(response.json()) == {"generatedAt", "systemHealth", "activeUsers", "auditActivity"}
-
-
 def test_test_case_catalog_is_in_memory(client: TestClient) -> None:
     from app.api.routes.qa import TEST_CASES
 
@@ -129,107 +114,12 @@ def test_test_case_catalog_is_in_memory(client: TestClient) -> None:
     assert all(case["id"].startswith("QA-") for case in TEST_CASES)
 
 
-def test_registration_stays_pending_and_does_not_return_password(
+def test_registration_and_user_management_routes_are_not_exposed(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    submitted = {}
-
-    def create_pending_user(**values) -> None:
-        submitted.update(values)
-
-    monkeypatch.setattr(qa_auth_route, "create_pending_user", create_pending_user)
-    response = client.post(
-        "/api/qa/auth/register",
-        json={
-            "username": "Morgan.Lee",
-            "email": "Morgan@example.com",
-            "password": "correct-horse-battery-staple",
-        },
-        headers={"Origin": "http://localhost:3000"},
-    )
-
-    assert response.status_code == 202
-    assert submitted["username"] == "morgan.lee"
-    assert submitted["email"] == "morgan@example.com"
-    assert submitted["password"] == "correct-horse-battery-staple"
-    assert "password" not in response.json()
-    assert "approve" in response.json()["message"]
-
-
-def test_registration_reports_duplicate_user(client: TestClient, monkeypatch) -> None:
-    def duplicate_user(**_values) -> None:
-        raise DuplicateUserError("A user with this username or email already exists.")
-
-    monkeypatch.setattr(qa_auth_route, "create_pending_user", duplicate_user)
-    response = client.post(
-        "/api/qa/auth/register",
-        json={
-            "username": "Morgan.Lee",
-            "email": "Morgan@example.com",
-            "password": "correct-horse-battery-staple",
-        },
-        headers={"Origin": "http://localhost:3000"},
-    )
-
-    assert response.status_code == 409
-
-
-def test_admin_user_approval_endpoints_require_admin_role(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(qa_users_route, "list_pending_users", lambda: [])
-    assert client.get("/api/qa/admin/users/pending", headers=bearer("manager")).status_code == 403
-    response = client.get("/api/qa/admin/users/pending", headers=bearer("admin"))
-    assert response.status_code == 200
-    assert response.json() == {"users": []}
-
-
-def test_admin_can_approve_or_reject_pending_users(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    approvals = []
-    rejections = []
-    monkeypatch.setattr(
-        qa_users_route,
-        "approve_user",
-        lambda user_id, role: approvals.append((user_id, role)),
-    )
-    monkeypatch.setattr(
-        qa_users_route,
-        "reject_user",
-        lambda user_id: rejections.append(user_id),
-    )
-
-    approval = client.post(
-        "/api/qa/admin/users/user-1/approve",
-        json={"role": "QA_ENGINEER"},
-        headers={**bearer("admin"), "Origin": "http://localhost:3000"},
-    )
-    rejection = client.post(
-        "/api/qa/admin/users/user-2/reject",
-        headers={**bearer("admin"), "Origin": "http://localhost:3000"},
-    )
-
-    assert approval.status_code == 204
-    assert rejection.status_code == 204
-    assert approvals == [("user-1", "QA_ENGINEER")]
-    assert rejections == ["user-2"]
-
-
-def test_admin_approval_returns_not_found_for_non_pending_user(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def missing_user(*_args) -> None:
-        raise RegistrationNotFoundError("The user does not have a pending registration.")
-
-    monkeypatch.setattr(qa_users_route, "approve_user", missing_user)
-    response = client.post(
-        "/api/qa/admin/users/user-1/approve",
-        json={"role": "QA_ENGINEER"},
-        headers={**bearer("admin"), "Origin": "http://localhost:3000"},
-    )
-    assert response.status_code == 404
+    origin = {"Origin": "http://localhost:3000"}
+    assert client.post("/api/qa/auth/register", headers=origin).status_code == 404
+    assert client.get("/api/qa/admin/users/pending").status_code == 404
+    assert client.post("/api/qa/admin/users/user-1/approve", headers=origin).status_code == 404
+    assert client.post("/api/qa/admin/users/user-1/reject", headers=origin).status_code == 404
+    assert client.get("/api/qa/admin/overview").status_code == 404

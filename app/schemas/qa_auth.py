@@ -1,18 +1,8 @@
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import BaseModel, EmailStr, StringConstraints
+from pydantic import BaseModel
 
 UserRole = Literal["ADMIN", "QA_MANAGER", "QA_ENGINEER", "DEVELOPER", "VIEWER"]
-Username = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        min_length=3,
-        max_length=32,
-        pattern=r"^[A-Za-z0-9_.-]+$",
-    ),
-]
-Password = Annotated[str, StringConstraints(min_length=12, max_length=128)]
 
 
 class UserProfile(BaseModel):
@@ -26,24 +16,3 @@ class UserProfile(BaseModel):
 
 class UserResponse(BaseModel):
     user: UserProfile
-
-
-class RegistrationRequest(BaseModel):
-    username: Username
-    email: EmailStr
-    password: Password
-
-
-class PendingRegistration(BaseModel):
-    id: str
-    username: str
-    email: EmailStr
-    requestedAt: str | None
-
-
-class PendingRegistrationsResponse(BaseModel):
-    users: list[PendingRegistration]
-
-
-class UserApprovalRequest(BaseModel):
-    role: UserRole
