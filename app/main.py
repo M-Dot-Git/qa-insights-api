@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .api.routes import auth, chats, health, qa, qa_auth
+from .api.routes import auth, chats, health, qa, qa_auth, qa_users
 from .db.session import engine
 from .middleware import ApiSecurityMiddleware, RequestSizeLimitMiddleware
 
@@ -26,6 +26,7 @@ app.include_router(auth.router)
 app.include_router(chats.router)
 app.include_router(health.router)
 app.include_router(qa_auth.router)
+app.include_router(qa_users.router)
 app.include_router(qa.router)
 
 

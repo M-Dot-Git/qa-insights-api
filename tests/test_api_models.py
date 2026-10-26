@@ -84,6 +84,6 @@ def test_video_frames_are_included_for_model_but_not_storage() -> None:
     assert "frames" not in message.persistent()["attachments"][0]
 
 
-def test_sqlalchemy_models_map_existing_tables_without_otp_table() -> None:
-    assert set(Base.metadata.tables) == {"users", "public_chats", "qa_data.users"}
+def test_sqlalchemy_models_map_legacy_tables_without_otp_or_qa_identity_tables() -> None:
+    assert set(Base.metadata.tables) == {"users", "public_chats"}
     assert PublicChat.__table__.c.chats.name == "chats"

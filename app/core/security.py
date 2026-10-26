@@ -11,7 +11,6 @@ from fastapi import Request, Response
 from .config import IS_PRODUCTION, SESSION_SECRET
 
 COOKIE_NAME = "dazz_session"
-QA_COOKIE_NAME = "qa_session"
 SESSION_LIFETIME_SECONDS = 7 * 24 * 60 * 60
 
 
@@ -88,15 +87,3 @@ def clear_session(response: Response) -> None:
 
 def authenticated_email(request: Request) -> str | None:
     return _authenticated_subject(request, COOKIE_NAME)
-
-
-def issue_qa_session(response: Response, user_id: str) -> None:
-    _issue_cookie(response, user_id, QA_COOKIE_NAME)
-
-
-def clear_qa_session(response: Response) -> None:
-    _clear_cookie(response, QA_COOKIE_NAME)
-
-
-def authenticated_qa_user_id(request: Request) -> str | None:
-    return _authenticated_subject(request, QA_COOKIE_NAME)

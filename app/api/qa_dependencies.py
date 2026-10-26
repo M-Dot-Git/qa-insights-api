@@ -1,28 +1,40 @@
-from fastapi import Depends, HTTPException, Request, Response
-from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import InvalidTokenError, PyJWKClientError
 
-from ..core.security import authenticated_qa_user_id, clear_qa_session
-from ..db.models import QAUser
-from ..db.session import get_db
+from ..core.keycloak import KeycloakUnavailableError, User, user_from_access_token
 
-
-def get_current_qa_user(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-) -> QAUser:
-    user_id = authenticated_qa_user_id(request)
-    user = db.get(QAUser, user_id) if user_id else None
-    if user is None:
-        clear_qa_session(response)
-        raise HTTPException(status_code=401, detail="Sign-in required.")
-    return user
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def require_qa_roles(*roles: str):
-    def dependency(user: QAUser = Depends(get_current_qa_user)) -> QAUser:
-        if user.role not in roles:
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> User:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail="A valid Keycloak access token is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        return user_from_access_token(credentials.credentials)
+    except KeycloakUnavailableError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Keycloak authentication is temporarily unavailable.",
+        ) from error
+    except (InvalidTokenError, PyJWKClientError) as error:
+        raise HTTPException(
+            status_code=401,
+            detail="The Keycloak access token is invalid or expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+
+
+def require_roles(*roles: str):
+    def dependency(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.roles.isdisjoint(roles):
             raise HTTPException(status_code=403, detail="You do not have access to this resource.")
-        return user
+        return current_user
 
     return dependency

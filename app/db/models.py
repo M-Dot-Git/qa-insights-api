@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import Date, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -62,23 +62,3 @@ class PublicChat(Base):
         onupdate=func.now(),
     )
     user: Mapped[User] = relationship(back_populates="chats")
-
-
-class QAUser(Base):
-    __tablename__ = "users"
-    __table_args__ = (
-        UniqueConstraint("email", name="qa_users_email_key"),
-        UniqueConstraint("username", name="qa_users_username_key"),
-        {"schema": "qa_data"},
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    username: Mapped[str] = mapped_column(String(32), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=text("'QA_MANAGER'")
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )

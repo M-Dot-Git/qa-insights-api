@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..qa_dependencies import get_current_qa_user, require_qa_roles
-from ...db.models import QAUser
+from ..qa_dependencies import get_current_user, require_roles
+from ...core.keycloak import User
 
 router = APIRouter(prefix="/api/qa", tags=["QA mock data"])
 RANDOM = random.SystemRandom()
@@ -63,7 +63,11 @@ def _iso_time(minutes_ago: int) -> str:
 
 
 @router.get("/dashboard")
-def dashboard(_: QAUser = Depends(get_current_qa_user)) -> dict:
+def dashboard(
+    _: User = Depends(
+        require_roles("ADMIN", "QA_MANAGER", "QA_ENGINEER", "DEVELOPER", "VIEWER")
+    ),
+) -> dict:
     total_tests = RANDOM.randint(280, 520)
     pass_rate = round(RANDOM.uniform(84.0, 99.5), 1)
     trend = [
@@ -105,7 +109,7 @@ def dashboard(_: QAUser = Depends(get_current_qa_user)) -> dict:
 def list_test_cases(
     status: str | None = Query(default=None),
     query: str = Query(default="", max_length=100),
-    _: QAUser = Depends(require_qa_roles("ADMIN", "QA_MANAGER", "DEVELOPER")),
+    _: User = Depends(require_roles("ADMIN", "QA_MANAGER", "QA_ENGINEER", "DEVELOPER")),
 ) -> dict:
     if status and status not in STATUSES:
         raise HTTPException(status_code=400, detail="Unsupported test status.")
@@ -126,7 +130,7 @@ def list_test_cases(
 @router.get("/test-cases/{case_id}")
 def get_test_case(
     case_id: str,
-    _: QAUser = Depends(require_qa_roles("ADMIN", "QA_MANAGER", "DEVELOPER")),
+    _: User = Depends(require_roles("ADMIN", "QA_MANAGER", "QA_ENGINEER", "DEVELOPER")),
 ) -> dict:
     case = next((item for item in TEST_CASES if item["id"] == case_id), None)
     if case is None:
@@ -136,7 +140,7 @@ def get_test_case(
 
 @router.get("/admin/overview")
 def admin_overview(
-    _: QAUser = Depends(require_qa_roles("ADMIN")),
+    _: User = Depends(require_roles("ADMIN")),
 ) -> dict:
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),

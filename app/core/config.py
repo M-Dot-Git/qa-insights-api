@@ -17,6 +17,12 @@ APP_ENV = os.getenv("APP_ENV", os.getenv("NODE_ENV", "development")).lower()
 IS_PRODUCTION = APP_ENV == "production"
 
 APP_ORIGIN = os.getenv("APP_ORIGIN", "")
+KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "qa-pulse").strip()
+KEYCLOAK_ISSUER = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}"
+KEYCLOAK_API_AUDIENCE = os.getenv("KEYCLOAK_API_AUDIENCE", "qa-insights-api").strip()
+KEYCLOAK_ADMIN_CLIENT_ID = os.getenv("KEYCLOAK_ADMIN_CLIENT_ID", "qa-insights-api-admin").strip()
+KEYCLOAK_ADMIN_CLIENT_SECRET = os.getenv("KEYCLOAK_ADMIN_CLIENT_SECRET", "").strip()
 TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("TRUSTED_ORIGINS", "").split(",")
