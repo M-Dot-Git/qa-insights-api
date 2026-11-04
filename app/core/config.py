@@ -29,6 +29,9 @@ KEYCLOAK_JWKS_URL = os.getenv(
 KEYCLOAK_API_AUDIENCE = os.getenv(
     "KEYCLOAK_API_AUDIENCE", "qa-insights-api-admin"
 ).strip()
+TEST_REPORTS_API_URL = os.getenv(
+    "TEST_REPORTS_API_URL", "http://localhost:8001"
+).rstrip("/")
 TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("TRUSTED_ORIGINS", "").split(",")

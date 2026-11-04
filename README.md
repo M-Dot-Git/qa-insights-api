@@ -32,6 +32,9 @@ Copy `.env.sample` to `.env` and configure:
 - `KEYCLOAK_JWKS_URL`: optional signing-key endpoint override. Docker Compose
   uses the internal Keycloak service URL here while validating the public
   browser-visible issuer.
+- `TEST_REPORTS_API_URL`: internal URL for the test reports microservice. The
+  QA Insights API validates the caller's Keycloak token and proxies
+  `/api/test-reports/*` requests to this service, forwarding the bearer token.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
 
 Import [`../qa-mfe-shell/keycloak/qa-pulse-realm.json`](../qa-mfe-shell/keycloak/qa-pulse-realm.json)
@@ -64,6 +67,7 @@ realm key, have the configured issuer and API audience, and be unexpired.
 | `GET /api/qa/dashboard` | Signed in | Random KPIs, readiness, trend, and execution summaries |
 | `GET /api/qa/test-cases` | QA roles | Random in-memory cases; supports `status` and `query` |
 | `GET /api/qa/test-cases/{case_id}` | QA roles | Case details, logs, failure context, and placeholders |
+| `/api/test-reports/*` | Signed in | Proxied to the QA Test Reports API |
 
 The supported realm roles are `ADMIN`, `QA_MANAGER`, `QA_ENGINEER`,
 `DEVELOPER`, and `VIEWER`. Test-case APIs allow `ADMIN`, `QA_MANAGER`,
