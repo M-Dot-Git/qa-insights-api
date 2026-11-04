@@ -76,8 +76,24 @@ signature and claim validation; client route guards are not an authorization
 boundary. The API retains the signed-in profile endpoint for the shell but has
 no registration, pending-user, approval, or user-administration endpoints.
 
-The test-case catalog is generated in memory once per process. None of these
-QA results are persisted or represent actual test outcomes.
+The QA mock responses and test-case catalog are generated in memory by
+`app/dummy_data/` and accessed through `app/services/`. The routes and
+Pydantic response contracts live in `app/api/routes/` and `app/schemas/`.
+None of these QA results are persisted or represent actual test outcomes.
+
+The shared backend layout is:
+
+| Folder | Responsibility |
+| --- | --- |
+| `app/api/routes/` | HTTP paths, dependencies, and response status |
+| `app/schemas/` | Request and response contracts |
+| `app/services/` | Use-case and integration logic |
+| `app/dummy_data/` | In-memory QA examples and generated mock values |
+| `app/db/` | Existing database session and SQLAlchemy models |
+
+Database-backed chat and sign-in operations are in services; their existing
+database models remain under `app/db/`. Report persistence models and
+repositories are intentionally deferred until report storage is designed.
 
 ## Database and legacy endpoints
 
