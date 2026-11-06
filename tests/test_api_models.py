@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.api.routes.chats import to_openrouter_message
+from app.services.chats import to_openrouter_message
 from app.db.base import Base
 from app.db.models import PublicChat
 from app.schemas.auth import UserSignInRequest

@@ -32,6 +32,9 @@ Copy `.env.sample` to `.env` and configure:
 - `KEYCLOAK_JWKS_URL`: optional signing-key endpoint override. Docker Compose
   uses the internal Keycloak service URL here while validating the public
   browser-visible issuer.
+- `TEST_REPORTS_API_URL`: internal URL for the test reports microservice. The
+  QA Insights API validates the caller's Keycloak token and proxies
+  `/api/test-reports/*` requests to this service, forwarding the bearer token.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
 
 Import [`../qa-mfe-shell/keycloak/qa-pulse-realm.json`](../qa-mfe-shell/keycloak/qa-pulse-realm.json)
@@ -64,6 +67,7 @@ realm key, have the configured issuer and API audience, and be unexpired.
 | `GET /api/qa/dashboard` | Signed in | Random KPIs, readiness, trend, and execution summaries |
 | `GET /api/qa/test-cases` | QA roles | Random in-memory cases; supports `status` and `query` |
 | `GET /api/qa/test-cases/{case_id}` | QA roles | Case details, logs, failure context, and placeholders |
+| `/api/test-reports/*` | Signed in | Proxied to the QA Test Reports API |
 
 The supported realm roles are `ADMIN`, `QA_MANAGER`, `QA_ENGINEER`,
 `DEVELOPER`, and `VIEWER`. Test-case APIs allow `ADMIN`, `QA_MANAGER`,
@@ -72,8 +76,24 @@ signature and claim validation; client route guards are not an authorization
 boundary. The API retains the signed-in profile endpoint for the shell but has
 no registration, pending-user, approval, or user-administration endpoints.
 
-The test-case catalog is generated in memory once per process. None of these
-QA results are persisted or represent actual test outcomes.
+The QA mock responses and test-case catalog are generated in memory by
+`app/dummy_data/` and accessed through `app/services/`. The routes and
+Pydantic response contracts live in `app/api/routes/` and `app/schemas/`.
+None of these QA results are persisted or represent actual test outcomes.
+
+The shared backend layout is:
+
+| Folder | Responsibility |
+| --- | --- |
+| `app/api/routes/` | HTTP paths, dependencies, and response status |
+| `app/schemas/` | Request and response contracts |
+| `app/services/` | Use-case and integration logic |
+| `app/dummy_data/` | In-memory QA examples and generated mock values |
+| `app/db/` | Existing database session and SQLAlchemy models |
+
+Database-backed chat and sign-in operations are in services; their existing
+database models remain under `app/db/`. Report persistence models and
+repositories are intentionally deferred until report storage is designed.
 
 ## Database and legacy endpoints
 

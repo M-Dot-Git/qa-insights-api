@@ -108,7 +108,7 @@ def test_qa_endpoints_require_bearer_and_preserve_role_access(
 
 
 def test_test_case_catalog_is_in_memory(client: TestClient) -> None:
-    from app.api.routes.qa import TEST_CASES
+    from app.dummy_data.qa import TEST_CASES
 
     assert len(TEST_CASES) == 12
     assert all(case["id"].startswith("QA-") for case in TEST_CASES)

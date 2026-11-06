@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from ...core.auth_utils import normalize_email
 from ...core.security import authenticated_email, clear_session, issue_session
-from ...db.models import User
 from ...db.session import get_db
 from ...schemas.auth import UserResponse, UserSignInRequest
+from ...services import auth as auth_service
+from ...services.auth import InvalidCredentialsError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -16,26 +16,16 @@ def sign_in(
     response: Response,
     db: Session = Depends(get_db),
 ) -> dict:
-    email = normalize_email(str(data.email))
-    user = db.get(User, email)
-
-    if user is None:
-        user = User(
-            email=email,
-            name=data.name,
-            date_of_birth=data.dateOfBirth,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    elif user.date_of_birth != data.dateOfBirth:
+    try:
+        user = auth_service.sign_in(db, data)
+    except InvalidCredentialsError:
         raise HTTPException(
             status_code=401,
             detail="Authentication failed. Check your email and date of birth.",
         )
 
     try:
-        issue_session(response, email)
+        issue_session(response, user.email)
     except RuntimeError as error:
         raise HTTPException(
             status_code=503,
@@ -55,7 +45,7 @@ def get_session(
         clear_session(response)
         raise HTTPException(status_code=401, detail="Sign-in required.")
 
-    user = db.get(User, email)
+    user = auth_service.get_user(db, email)
     if user is None:
         clear_session(response)
         raise HTTPException(status_code=401, detail="Sign-in required.")

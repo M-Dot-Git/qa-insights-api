@@ -3,7 +3,7 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import app.api.routes.health as health_route
+import app.services.health as health_service
 from app.main import app
 from fastapi.testclient import TestClient
 
@@ -32,7 +32,8 @@ def test_agent_health_calls_agent_with_random_prompt_when_body_is_missing(
 ) -> None:
     create = AsyncMock(
         return_value=SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Hello!"))]
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Hello!"))],
+            dict=lambda: {},
         )
     )
     close = AsyncMock()
@@ -40,8 +41,8 @@ def test_agent_health_calls_agent_with_random_prompt_when_body_is_missing(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
         close=close,
     )
-    monkeypatch.setattr(health_route, "OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(health_route, "AsyncOpenAI", lambda **_: client_instance)
+    monkeypatch.setattr(health_service, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(health_service, "AsyncOpenAI", lambda **_: client_instance)
 
     response = client.post(
         "/health/agent",
@@ -59,15 +60,16 @@ def test_agent_health_calls_agent_with_random_prompt_when_body_is_missing(
 def test_agent_health_sends_request_text_to_agent(monkeypatch) -> None:
     create = AsyncMock(
         return_value=SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Yes."))]
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Yes."))],
+            dict=lambda: {},
         )
     )
     client_instance = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
         close=AsyncMock(),
     )
-    monkeypatch.setattr(health_route, "OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(health_route, "AsyncOpenAI", lambda **_: client_instance)
+    monkeypatch.setattr(health_service, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(health_service, "AsyncOpenAI", lambda **_: client_instance)
 
     response = client.post(
         "/health/agent",
@@ -80,7 +82,7 @@ def test_agent_health_sends_request_text_to_agent(monkeypatch) -> None:
 
 
 def test_agent_health_returns_unavailable_when_api_key_is_missing(monkeypatch) -> None:
-    monkeypatch.setattr(health_route, "OPENROUTER_API_KEY", "")
+    monkeypatch.setattr(health_service, "OPENROUTER_API_KEY", "")
 
     response = client.post(
         "/health/agent",
