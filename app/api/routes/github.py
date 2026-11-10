@@ -22,7 +22,10 @@ async def list_repositories(
     _: User = Depends(get_current_user),
     github: GitHubClient = Depends(get_github_client),
 ) -> list[dict[str, str]]:
-    return github.configured_repos()
+    try:
+        return await github.list_repositories()
+    except GitHubAPIError as error:
+        raise_api_error(error)
 
 
 @router.get("/prs")

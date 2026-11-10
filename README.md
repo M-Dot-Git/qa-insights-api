@@ -36,10 +36,10 @@ Copy `.env.example` (or `.env.sample`) to `.env` and configure:
   QA Insights API validates the caller's Keycloak token and proxies
   `/api/test-reports/*` requests to this service, forwarding the bearer token.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
-- `GITHUB_TOKEN`: fine-grained GitHub PAT with read-only access to the selected
-  repositories; keep it only in the API environment.
-- `GITHUB_ALLOWED_REPOS`: comma-separated `owner/repo` allowlist. Repositories
-  outside this list are rejected before any GitHub request.
+- `GITHUB_TOKEN`: fine-grained GitHub PAT with read-only access to the
+  repositories the dashboard should discover; keep it only in the API
+  environment. All signed-in dashboard users can access every repository
+  available to this shared token.
 - `GITHUB_GRAPHQL_URL`: optional GitHub GraphQL endpoint; defaults to
   `https://api.github.com/graphql`.
 
@@ -74,14 +74,16 @@ realm key, have the configured issuer and API audience, and be unexpired.
 | `GET /api/qa/test-cases` | QA roles | Random in-memory cases; supports `status` and `query` |
 | `GET /api/qa/test-cases/{case_id}` | QA roles | Case details, logs, failure context, and placeholders |
 | `/api/test-reports/*` | Signed in | Proxied to the QA Test Reports API |
-| `GET /api/github/repos` | Signed in | Return configured GitHub repositories |
+| `GET /api/github/repos` | Signed in | Discover repositories visible to the API's GitHub token |
 | `GET /api/github/prs` | Signed in | Cursor-paginated pull requests |
 | `GET /api/github/prs/{number}?repo=owner/repo` | Signed in | Pull request detail, reviews, checks, and file patches |
 
-GitHub endpoints use the API-side token and allowlist. The PR list supports
+GitHub endpoints use the API-side token. Repositories are discovered through
+GitHub GraphQL pagination and cached in memory for 45 seconds. PR endpoints
+accept only repositories present in that discovered set, so unknown or
+inaccessible repositories are rejected before a PR query. The PR list supports
 `repo`, `state=open|closed`, `first`, and `after` query parameters; pagination
-uses GitHub cursors. List and detail responses are cached in memory for 45
-seconds.
+uses GitHub cursors. List and detail responses are also cached for 45 seconds.
 
 The supported realm roles are `ADMIN`, `QA_MANAGER`, `QA_ENGINEER`,
 `DEVELOPER`, and `VIEWER`. Test-case APIs allow `ADMIN`, `QA_MANAGER`,

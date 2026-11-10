@@ -33,11 +33,6 @@ TEST_REPORTS_API_URL = os.getenv(
     "TEST_REPORTS_API_URL", "http://localhost:8001"
 ).rstrip("/")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
-GITHUB_ALLOWED_REPOS = [
-    repo.strip()
-    for repo in os.getenv("GITHUB_ALLOWED_REPOS", "").split(",")
-    if repo.strip()
-]
 GITHUB_GRAPHQL_URL = os.getenv(
     "GITHUB_GRAPHQL_URL", "https://api.github.com/graphql"
 ).strip()

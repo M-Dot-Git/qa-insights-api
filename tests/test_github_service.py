@@ -1,13 +1,19 @@
 import asyncio
+import time
 
 import pytest
 
 import app.services.github as github_service
-from app.services.github import GitHubAPIError, GitHubClient
+from app.services.github import CACHE_TTL_SECONDS, GitHubAPIError, GitHubClient
 
 
 def _client() -> GitHubClient:
-    return GitHubClient("test-token", "https://example.test/graphql", ["Acme/widgets"])
+    client = GitHubClient("test-token", "https://example.test/graphql")
+    client._repositories_cache = (
+        time.monotonic() + CACHE_TTL_SECONDS,
+        [{"owner": "Acme", "repo": "widgets", "fullName": "Acme/widgets"}],
+    )
+    return client
 
 
 @pytest.mark.parametrize(
@@ -78,6 +84,8 @@ def test_pull_request_list_is_normalized_and_uses_cursor(monkeypatch) -> None:
                         {
                             "number": 7,
                             "title": "Feature",
+                            "state": "OPEN",
+                            "merged": False,
                             "isDraft": False,
                             "url": "https://github.com/Acme/widgets/pull/7",
                             "createdAt": "2026-01-01T00:00:00Z",
@@ -113,22 +121,61 @@ def test_pull_request_list_is_normalized_and_uses_cursor(monkeypatch) -> None:
     assert captured["after"] == "prior-cursor"
     assert captured["states"] == ["OPEN"]
     assert result["items"][0]["repo"] == "Acme/widgets"
+    assert result["items"][0]["state"] == "OPEN"
     assert result["items"][0]["ciState"] == "PENDING"
     assert result["hasNext"] is True
     assert result["endCursor"] == "next-cursor"
 
 
-def test_allowlist_rejection_happens_before_github_request() -> None:
-    client = _client()
+def test_repository_discovery_follows_cursors_and_caches_results() -> None:
+    client = GitHubClient("test-token", "https://example.test/graphql")
+    calls = []
 
-    async def unexpected_request(*_args, **_kwargs):
-        raise AssertionError("GitHub must not be called for a disallowed repository")
+    async def fake_graphql(query, variables):
+        calls.append((query, variables))
+        if variables["after"] is None:
+            return {
+                "viewer": {
+                    "repositories": {
+                        "nodes": [{"nameWithOwner": "Acme/widgets"}],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "repo-cursor"},
+                    }
+                }
+            }
+        return {
+            "viewer": {
+                "repositories": {
+                    "nodes": [{"nameWithOwner": "Knack/qa-tools"}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
+
+    client.graphql = fake_graphql
+    result = asyncio.run(client.list_repositories())
+    cached_result = asyncio.run(client.list_repositories())
+
+    assert [repo["fullName"] for repo in result] == ["Acme/widgets", "Knack/qa-tools"]
+    assert cached_result == result
+    assert [variables["after"] for _, variables in calls] == [None, "repo-cursor"]
+    assert all(variables["first"] == 100 for _, variables in calls)
+    assert len(calls) == 2
+
+
+def test_repository_not_visible_to_token_is_rejected_before_pr_query() -> None:
+    client = _client()
+    calls = []
+
+    async def unexpected_request(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("No PR query should be made for an undiscovered repository")
 
     client.graphql = unexpected_request
     with pytest.raises(GitHubAPIError) as error:
         asyncio.run(client.list_pull_requests("acme/other", "open", 20, None))
 
     assert error.value.status_code == 403
+    assert calls == []
 
 
 def test_files_are_paged_with_end_cursor_until_complete() -> None:

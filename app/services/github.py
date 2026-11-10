@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ..core.config import GITHUB_ALLOWED_REPOS, GITHUB_GRAPHQL_URL, GITHUB_TOKEN
+from ..core.config import GITHUB_GRAPHQL_URL, GITHUB_TOKEN
 
 logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 45
@@ -17,6 +17,22 @@ LOW_RATE_LIMIT_THRESHOLD = 100
 MAX_FILES = 3000
 MAX_REST_CACHE_ENTRIES = 5000
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+REPOSITORY_QUERY = """
+query ViewerRepositories($first: Int!, $after: String) {
+  rateLimit { cost remaining resetAt }
+  viewer {
+    repositories(
+      first: $first
+      after: $after
+      affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+      orderBy: {field: NAME, direction: ASC}
+    ) {
+      nodes { nameWithOwner }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
 GRAPHQL_ERRORS = {
     "list": """
 query PullRequests($owner: String!, $name: String!, $states: [PullRequestState!], $first: Int!, $after: String) {
@@ -26,7 +42,7 @@ query PullRequests($owner: String!, $name: String!, $states: [PullRequestState!]
       totalCount
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title isDraft url createdAt updatedAt author { login avatarUrl }
+        number title state merged isDraft url createdAt updatedAt author { login avatarUrl }
         headRefName baseRefName labels(first: 10) { nodes { name color } }
         reviewDecision additions deletions changedFiles
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -90,30 +106,69 @@ class GitHubAPIError(Exception):
 
 
 class GitHubClient:
-    def __init__(self, token: str, graphql_url: str, allowed_repos: list[str]) -> None:
+    def __init__(self, token: str, graphql_url: str) -> None:
         self.token = token
         self.graphql_url = graphql_url
-        self.allowed_repos = {
-            repo.lower(): repo for repo in allowed_repos if REPO_PATTERN.fullmatch(repo)
-        }
         self._list_cache: dict[tuple[str, str, int, str | None], tuple[float, dict[str, Any]]] = {}
         self._detail_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
+        self._repositories_cache: tuple[float, list[dict[str, str]]] | None = None
         self._rest_cache: dict[
             str, tuple[str | None, list[dict[str, Any]], str | None]
         ] = {}
 
-    def configured_repos(self) -> list[dict[str, str]]:
-        return [
-            {"owner": owner, "repo": name, "fullName": f"{owner}/{name}"}
-            for full_name in sorted(self.allowed_repos.values(), key=str.lower)
-            for owner, name in [full_name.split("/", 1)]
-        ]
+    async def list_repositories(self) -> list[dict[str, str]]:
+        now = time.monotonic()
+        if self._repositories_cache and self._repositories_cache[0] > now:
+            return self._repositories_cache[1]
 
-    def validate_repo(self, repo: str) -> tuple[str, str]:
-        if not REPO_PATTERN.fullmatch(repo) or repo.lower() not in self.allowed_repos:
-            raise GitHubAPIError(403, "This repository is not in the GitHub allowlist.")
-        owner, name = repo.split("/", 1)
-        return owner, name
+        repositories: dict[str, dict[str, str]] = {}
+        cursor = None
+        while True:
+            data = await self.graphql(
+                REPOSITORY_QUERY,
+                {"first": 100, "after": cursor},
+            )
+            viewer = data.get("viewer")
+            if not isinstance(viewer, dict):
+                raise GitHubAPIError(502, "GitHub returned an invalid repository response.")
+            connection = viewer.get("repositories")
+            if not isinstance(connection, dict):
+                raise GitHubAPIError(502, "GitHub returned an invalid repository response.")
+            for node in connection.get("nodes", []):
+                full_name = node.get("nameWithOwner")
+                if not isinstance(full_name, str) or not REPO_PATTERN.fullmatch(full_name):
+                    continue
+                owner, name = full_name.split("/", 1)
+                repositories[full_name.lower()] = {
+                    "owner": owner,
+                    "repo": name,
+                    "fullName": full_name,
+                }
+            page_info = connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+            if not cursor:
+                raise GitHubAPIError(502, "GitHub repository pagination returned no cursor.")
+
+        result = sorted(repositories.values(), key=lambda item: item["fullName"].lower())
+        self._repositories_cache = (time.monotonic() + CACHE_TTL_SECONDS, result)
+        return result
+
+    async def validate_repo(self, repo: str) -> tuple[str, str]:
+        if not REPO_PATTERN.fullmatch(repo):
+            raise GitHubAPIError(403, "This repository is not accessible to the configured GitHub token.")
+        repositories = await self.list_repositories()
+        match = next(
+            (item for item in repositories if item["fullName"].lower() == repo.lower()),
+            None,
+        )
+        if match is None:
+            raise GitHubAPIError(
+                403,
+                "This repository is not accessible to the configured GitHub token.",
+            )
+        return match["owner"], match["repo"]
 
     def _expire_response_caches(self) -> None:
         now = time.monotonic()
@@ -200,7 +255,7 @@ class GitHubClient:
     async def list_pull_requests(
         self, repo: str, state: str, first: int, after: str | None
     ) -> dict[str, Any]:
-        owner, name = self.validate_repo(repo)
+        owner, name = await self.validate_repo(repo)
         self._expire_response_caches()
         key = (repo.lower(), state, first, after)
         cached = self._list_cache.get(key)
@@ -226,6 +281,8 @@ class GitHubClient:
                     "repo": repo,
                     "number": pr["number"],
                     "title": pr["title"],
+                    "state": pr["state"],
+                    "merged": pr["merged"],
                     "isDraft": pr["isDraft"],
                     "url": pr["url"],
                     "author": pr.get("author"),
@@ -258,7 +315,7 @@ class GitHubClient:
         return rollup.get("state") if rollup else None
 
     async def pull_request_detail(self, repo: str, number: int) -> dict[str, Any]:
-        owner, name = self.validate_repo(repo)
+        owner, name = await self.validate_repo(repo)
         if not self.token:
             raise GitHubAPIError(503, "GitHub integration is not configured.")
         self._expire_response_caches()
@@ -504,6 +561,6 @@ class GitHubClientFactory:
     def create_client() -> GitHubClient:
         if GitHubClientFactory._client is None:
             GitHubClientFactory._client = GitHubClient(
-                GITHUB_TOKEN, GITHUB_GRAPHQL_URL, GITHUB_ALLOWED_REPOS
+                GITHUB_TOKEN, GITHUB_GRAPHQL_URL
             )
         return GitHubClientFactory._client
