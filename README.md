@@ -1,9 +1,10 @@
 # QA Insights API
 
-FastAPI backend for the QA Pulse micro-frontends. It provides email/password
-authentication, role checks, and randomized QA reporting data. User accounts
-are stored in PostgreSQL; QA dashboard and test-case samples exist only in
-memory.
+FastAPI backend for the QA Pulse micro-frontends. The React shell signs users
+in with Keycloak using Authorization Code flow and PKCE. This API verifies
+Keycloak bearer access tokens, enforces realm-role permissions, and serves
+randomized QA reporting data; it does not issue sessions, collect passwords,
+or provision users.
 
 ## Requirements and setup
 
@@ -23,17 +24,19 @@ Copy `.env.sample` to `.env` and configure:
 - `PSQL_STR` or `DATABASE_URL`: PostgreSQL connection URL.
 - `SESSION_SECRET`: a random value of at least 32 characters.
 - `APP_ENV` and `APP_ORIGIN`: set the allowed public origin in production.
+- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, and `KEYCLOAK_API_AUDIENCE`: expected token
+  issuer and audience. The defaults match the local `qa-pulse` realm.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
 
-Apply the QA authentication migration to the existing database:
+Import [`../qa-mfe-shell/keycloak/qa-pulse-realm.json`](../qa-mfe-shell/keycloak/qa-pulse-realm.json)
+into the local Keycloak instance. It defines the public `qa-mfe-shell` client,
+PKCE S256, the `qa-insights-api-admin` audience mapper, and the supported realm
+roles, including `QA_ENGINEER`. Do not enable password or
+direct-grant login in the SPA client.
 
-```sh
-psql "$PSQL_STR" -f migrations/0002_qa_auth.sql
-```
-
-It creates `qa_data.users` without changing the existing `public` schema.
-PostgreSQL unquoted identifiers cannot contain hyphens, so the schema name is
-`qa_data`, not `qa-data`.
+Create users and assign realm roles in Keycloak's Admin Console. The public
+`qa-mfe-shell` client handles sign-in; do not enable password or direct-grant
+login in the SPA client or add a client secret to the browser application.
 
 Run the API on port 8000:
 
@@ -45,36 +48,33 @@ Interactive API docs are available at `http://localhost:8000/docs`.
 
 ## QA endpoints
 
-All QA business-data endpoints require a valid QA session cookie.
+All QA business-data endpoints require a valid Keycloak access token in the
+`Authorization: Bearer` header. Tokens must be signed with Keycloak's RS256
+realm key, have the configured issuer and API audience, and be unexpired.
 
 | Endpoint | Access | Purpose |
 | --- | --- | --- |
-| `POST /api/qa/auth/signup` | Public | Create an account with username, email, and password |
-| `POST /api/qa/auth/login` | Public | Sign in with email and password |
-| `GET /api/qa/auth/session` | Signed in | Return the current account |
-| `POST /api/qa/auth/logout` | Signed in | Clear the session cookie |
+| `GET /api/qa/auth/session` | Signed in | Return the current Keycloak profile and supported roles |
 | `GET /api/qa/dashboard` | Signed in | Random KPIs, readiness, trend, and execution summaries |
 | `GET /api/qa/test-cases` | QA roles | Random in-memory cases; supports `status` and `query` |
 | `GET /api/qa/test-cases/{case_id}` | QA roles | Case details, logs, failure context, and placeholders |
-| `GET /api/qa/admin/overview` | `ADMIN` | Randomized administrative overview |
 
-Signup passwords must contain 12–128 characters and are scrypt-hashed. Signup
-assigns `QA_MANAGER`; clients cannot choose a role. Promote an administrator
-out of band in the database. This development authentication is not a
-production identity provider. A trusted backend or identity provider must
-enforce production authentication and authorization; frontend route guards
-are not a security boundary.
+The supported realm roles are `ADMIN`, `QA_MANAGER`, `QA_ENGINEER`,
+`DEVELOPER`, and `VIEWER`. Test-case APIs allow `ADMIN`, `QA_MANAGER`,
+`QA_ENGINEER`, and `DEVELOPER`. Role checks happen in FastAPI after JWT
+signature and claim validation; client route guards are not an authorization
+boundary. The API retains the signed-in profile endpoint for the shell but has
+no registration, pending-user, approval, or user-administration endpoints.
 
-Dashboard and admin metrics are randomized per request. The test-case catalog
-is generated in memory once per process. None of these QA results are persisted
-or represent actual test outcomes.
+The test-case catalog is generated in memory once per process. None of these
+QA results are persisted or represent actual test outcomes.
 
 ## Database and legacy endpoints
 
-The existing PostgreSQL URL and DAZZ database are reused; QA user accounts are
-isolated in the `qa_data` schema. Existing DAZZ API routes and their migration
-remain available for compatibility, but the DAZZ frontend and its Node/Vite
-build configuration are not part of this API repository.
+The existing PostgreSQL URL and DAZZ database are reused by the legacy DAZZ
+API. The historical `0002_qa_auth.sql` migration is no longer needed for QA
+sign-in; already-created `qa_data` records are not consulted. Existing DAZZ
+API routes remain available for compatibility.
 
 Run the backend tests with:
 
