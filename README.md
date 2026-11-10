@@ -19,7 +19,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copy `.env.sample` to `.env` and configure:
+Copy `.env.example` (or `.env.sample`) to `.env` and configure:
 
 - `PSQL_STR` or `DATABASE_URL`: PostgreSQL connection URL.
 - `SESSION_SECRET`: a random value of at least 32 characters.
@@ -36,6 +36,14 @@ Copy `.env.sample` to `.env` and configure:
   QA Insights API validates the caller's Keycloak token and proxies
   `/api/test-reports/*` requests to this service, forwarding the bearer token.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
+- `GITHUB_TOKEN`: fine-grained GitHub PAT with read-only access to the
+  repositories the dashboard should discover; keep it only in the API
+  environment. All signed-in dashboard users can access repositories in the
+  configured organization that are available to this shared token.
+- `GITHUB_ORGANIZATION`: GitHub organization login to show in the dashboard;
+  defaults to `M-Dot-Git`.
+- `GITHUB_GRAPHQL_URL`: optional GitHub GraphQL endpoint; defaults to
+  `https://api.github.com/graphql`.
 
 Import [`../qa-mfe-shell/keycloak/qa-pulse-realm.json`](../qa-mfe-shell/keycloak/qa-pulse-realm.json)
 into the local Keycloak instance. It defines the public `qa-mfe-shell` client,
@@ -68,6 +76,18 @@ realm key, have the configured issuer and API audience, and be unexpired.
 | `GET /api/qa/test-cases` | QA roles | Random in-memory cases; supports `status` and `query` |
 | `GET /api/qa/test-cases/{case_id}` | QA roles | Case details, logs, failure context, and placeholders |
 | `/api/test-reports/*` | Signed in | Proxied to the QA Test Reports API |
+| `GET /api/github/repos` | Signed in | Discover repositories visible to the API's GitHub token |
+| `GET /api/github/prs` | Signed in | Cursor-paginated pull requests |
+| `GET /api/github/prs/{number}?repo=owner/repo` | Signed in | Pull request detail, reviews, checks, and file patches |
+
+GitHub endpoints require a signed-in Keycloak user and use the API-side GitHub
+token for upstream requests. Repositories are discovered only from the
+configured organization through GitHub GraphQL pagination and cached in memory
+for 45 seconds. PR endpoints accept only repositories present in that
+discovered set, so unknown or inaccessible repositories are rejected before a
+PR query. The PR list supports
+`repo`, `state=open|closed`, `first`, and `after` query parameters; pagination
+uses GitHub cursors. List and detail responses are also cached for 45 seconds.
 
 The supported realm roles are `ADMIN`, `QA_MANAGER`, `QA_ENGINEER`,
 `DEVELOPER`, and `VIEWER`. Test-case APIs allow `ADMIN`, `QA_MANAGER`,

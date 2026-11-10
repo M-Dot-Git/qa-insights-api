@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .api.routes import auth, chats, health, qa, qa_auth, test_reports
+from .api.routes import auth, chats, github, health, qa, qa_auth, test_reports
 from .db.session import engine
 from .middleware import ApiSecurityMiddleware, RequestSizeLimitMiddleware
 
@@ -28,6 +28,7 @@ app.include_router(health.router)
 app.include_router(qa_auth.router)
 app.include_router(qa.router)
 app.include_router(test_reports.router)
+app.include_router(github.router)
 
 
 @app.exception_handler(HTTPException)

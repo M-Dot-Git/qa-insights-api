@@ -27,6 +27,12 @@ def test_root_does_not_serve_a_frontend() -> None:
     assert response.status_code == 404
 
 
+def test_github_endpoints_require_keycloak_authentication() -> None:
+    response = client.get("/api/github/prs?repo=acme/widgets")
+
+    assert response.status_code == 401
+
+
 def test_agent_health_calls_agent_with_random_prompt_when_body_is_missing(
     monkeypatch,
 ) -> None:
