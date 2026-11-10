@@ -7,7 +7,7 @@ from typing import Any
 import jwt
 from jwt import PyJWKClient, PyJWKClientConnectionError, PyJWKClientError
 
-from .config import KEYCLOAK_API_AUDIENCE, KEYCLOAK_ISSUER
+from .config import KEYCLOAK_API_AUDIENCE, KEYCLOAK_ISSUER, KEYCLOAK_JWKS_URL
 
 
 class KeycloakUnavailableError(Exception):
@@ -33,9 +33,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise KeycloakUnavailableError("Keycloak issuer and audience must be configured.")
 
     issuer = KEYCLOAK_ISSUER
-    jwks_url = f"{issuer}/protocol/openid-connect/certs"
     try:
-        signing_key = _jwks_client(jwks_url).get_signing_key_from_jwt(token).key
+        signing_key = _jwks_client(KEYCLOAK_JWKS_URL).get_signing_key_from_jwt(token).key
     except PyJWKClientConnectionError as error:
         raise KeycloakUnavailableError("Could not retrieve Keycloak signing keys.") from error
     except PyJWKClientError as error:

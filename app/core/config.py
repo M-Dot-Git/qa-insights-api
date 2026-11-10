@@ -19,7 +19,13 @@ IS_PRODUCTION = APP_ENV == "production"
 APP_ORIGIN = os.getenv("APP_ORIGIN", "")
 KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
 KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "qa-pulse").strip()
-KEYCLOAK_ISSUER = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}"
+KEYCLOAK_ISSUER = os.getenv(
+    "KEYCLOAK_ISSUER", f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}"
+).rstrip("/")
+KEYCLOAK_JWKS_URL = os.getenv(
+    "KEYCLOAK_JWKS_URL",
+    f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs",
+).strip()
 KEYCLOAK_API_AUDIENCE = os.getenv(
     "KEYCLOAK_API_AUDIENCE", "qa-insights-api-admin"
 ).strip()

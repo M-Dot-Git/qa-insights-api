@@ -105,6 +105,27 @@ def dashboard(
     }
 
 
+@router.get("/chart-data")
+def chart_data(
+    _: User = Depends(
+        require_roles("ADMIN", "QA_MANAGER", "QA_ENGINEER", "DEVELOPER", "VIEWER")
+    ),
+) -> dict:
+    """Return chart-ready trend data for the dashboard visualization."""
+    trend = [
+        {
+            "date": (datetime.now(timezone.utc) - timedelta(days=6 - day)).date().isoformat(),
+            "passed": RANDOM.randint(90, 220),
+            "failed": RANDOM.randint(2, 35),
+        }
+        for day in range(7)
+    ]
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "trend": trend,
+    }
+
+
 @router.get("/test-cases")
 def list_test_cases(
     status: str | None = Query(default=None),

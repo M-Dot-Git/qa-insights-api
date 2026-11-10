@@ -26,6 +26,12 @@ Copy `.env.sample` to `.env` and configure:
 - `APP_ENV` and `APP_ORIGIN`: set the allowed public origin in production.
 - `KEYCLOAK_URL`, `KEYCLOAK_REALM`, and `KEYCLOAK_API_AUDIENCE`: expected token
   issuer and audience. The defaults match the local `qa-pulse` realm.
+- `KEYCLOAK_ISSUER`: optional exact `iss` claim expected in access tokens. Set
+  this separately when the API must reach the JWKS endpoint through an internal
+  network address that differs from the browser-visible Keycloak URL.
+- `KEYCLOAK_JWKS_URL`: optional signing-key endpoint override. Docker Compose
+  uses the internal Keycloak service URL here while validating the public
+  browser-visible issuer.
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
 
 Import [`../qa-mfe-shell/keycloak/qa-pulse-realm.json`](../qa-mfe-shell/keycloak/qa-pulse-realm.json)
