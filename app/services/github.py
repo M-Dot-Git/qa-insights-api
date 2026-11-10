@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ..core.config import GITHUB_GRAPHQL_URL, GITHUB_TOKEN
+from ..core.config import GITHUB_GRAPHQL_URL, GITHUB_ORGANIZATION, GITHUB_TOKEN
 
 logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 45
@@ -18,9 +18,9 @@ MAX_FILES = 3000
 MAX_REST_CACHE_ENTRIES = 5000
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 REPOSITORY_QUERY = """
-query ViewerRepositories($first: Int!, $after: String) {
+query OrganizationRepositories($organization: String!, $first: Int!, $after: String) {
   rateLimit { cost remaining resetAt }
-  viewer {
+  organization(login: $organization) {
     repositories(
       first: $first
       after: $after
@@ -106,9 +106,15 @@ class GitHubAPIError(Exception):
 
 
 class GitHubClient:
-    def __init__(self, token: str, graphql_url: str) -> None:
+    def __init__(
+        self,
+        token: str,
+        graphql_url: str,
+        organization: str = GITHUB_ORGANIZATION,
+    ) -> None:
         self.token = token
         self.graphql_url = graphql_url
+        self.organization = organization
         self._list_cache: dict[tuple[str, str, int, str | None], tuple[float, dict[str, Any]]] = {}
         self._detail_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
         self._repositories_cache: tuple[float, list[dict[str, str]]] | None = None
@@ -126,12 +132,19 @@ class GitHubClient:
         while True:
             data = await self.graphql(
                 REPOSITORY_QUERY,
-                {"first": 100, "after": cursor},
+                {
+                    "organization": self.organization,
+                    "first": 100,
+                    "after": cursor,
+                },
             )
-            viewer = data.get("viewer")
-            if not isinstance(viewer, dict):
-                raise GitHubAPIError(502, "GitHub returned an invalid repository response.")
-            connection = viewer.get("repositories")
+            organization = data.get("organization")
+            if not isinstance(organization, dict):
+                raise GitHubAPIError(
+                    404,
+                    "Configured GitHub organization was not found or is not accessible to the configured GitHub token.",
+                )
+            connection = organization.get("repositories")
             if not isinstance(connection, dict):
                 raise GitHubAPIError(502, "GitHub returned an invalid repository response.")
             for node in connection.get("nodes", []):
@@ -139,6 +152,8 @@ class GitHubClient:
                 if not isinstance(full_name, str) or not REPO_PATTERN.fullmatch(full_name):
                     continue
                 owner, name = full_name.split("/", 1)
+                if owner.lower() != self.organization.lower():
+                    continue
                 repositories[full_name.lower()] = {
                     "owner": owner,
                     "repo": name,
@@ -561,6 +576,6 @@ class GitHubClientFactory:
     def create_client() -> GitHubClient:
         if GitHubClientFactory._client is None:
             GitHubClientFactory._client = GitHubClient(
-                GITHUB_TOKEN, GITHUB_GRAPHQL_URL
+                GITHUB_TOKEN, GITHUB_GRAPHQL_URL, GITHUB_ORGANIZATION
             )
         return GitHubClientFactory._client

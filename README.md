@@ -38,8 +38,10 @@ Copy `.env.example` (or `.env.sample`) to `.env` and configure:
 - `OPENROUTER_API_KEY`: only needed for the legacy chat endpoints.
 - `GITHUB_TOKEN`: fine-grained GitHub PAT with read-only access to the
   repositories the dashboard should discover; keep it only in the API
-  environment. All signed-in dashboard users can access every repository
-  available to this shared token.
+  environment. All signed-in dashboard users can access repositories in the
+  configured organization that are available to this shared token.
+- `GITHUB_ORGANIZATION`: GitHub organization login to show in the dashboard;
+  defaults to `M-Dot-Git`.
 - `GITHUB_GRAPHQL_URL`: optional GitHub GraphQL endpoint; defaults to
   `https://api.github.com/graphql`.
 
@@ -78,10 +80,12 @@ realm key, have the configured issuer and API audience, and be unexpired.
 | `GET /api/github/prs` | Signed in | Cursor-paginated pull requests |
 | `GET /api/github/prs/{number}?repo=owner/repo` | Signed in | Pull request detail, reviews, checks, and file patches |
 
-GitHub endpoints use the API-side token. Repositories are discovered through
-GitHub GraphQL pagination and cached in memory for 45 seconds. PR endpoints
-accept only repositories present in that discovered set, so unknown or
-inaccessible repositories are rejected before a PR query. The PR list supports
+GitHub endpoints require a signed-in Keycloak user and use the API-side GitHub
+token for upstream requests. Repositories are discovered only from the
+configured organization through GitHub GraphQL pagination and cached in memory
+for 45 seconds. PR endpoints accept only repositories present in that
+discovered set, so unknown or inaccessible repositories are rejected before a
+PR query. The PR list supports
 `repo`, `state=open|closed`, `first`, and `after` query parameters; pagination
 uses GitHub cursors. List and detail responses are also cached for 45 seconds.
 

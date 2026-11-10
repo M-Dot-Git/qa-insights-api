@@ -128,24 +128,29 @@ def test_pull_request_list_is_normalized_and_uses_cursor(monkeypatch) -> None:
 
 
 def test_repository_discovery_follows_cursors_and_caches_results() -> None:
-    client = GitHubClient("test-token", "https://example.test/graphql")
+    client = GitHubClient(
+        "test-token", "https://example.test/graphql", "M-Dot-Git"
+    )
     calls = []
 
     async def fake_graphql(query, variables):
         calls.append((query, variables))
         if variables["after"] is None:
             return {
-                "viewer": {
+                "organization": {
                     "repositories": {
-                        "nodes": [{"nameWithOwner": "Acme/widgets"}],
+                        "nodes": [
+                            {"nameWithOwner": "M-Dot-Git/widgets"},
+                            {"nameWithOwner": "Other-Org/ignored"},
+                        ],
                         "pageInfo": {"hasNextPage": True, "endCursor": "repo-cursor"},
                     }
                 }
             }
         return {
-            "viewer": {
+            "organization": {
                 "repositories": {
-                    "nodes": [{"nameWithOwner": "Knack/qa-tools"}],
+                    "nodes": [{"nameWithOwner": "M-Dot-Git/qa-tools"}],
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
                 }
             }
@@ -155,11 +160,31 @@ def test_repository_discovery_follows_cursors_and_caches_results() -> None:
     result = asyncio.run(client.list_repositories())
     cached_result = asyncio.run(client.list_repositories())
 
-    assert [repo["fullName"] for repo in result] == ["Acme/widgets", "Knack/qa-tools"]
+    assert [repo["fullName"] for repo in result] == [
+        "M-Dot-Git/qa-tools",
+        "M-Dot-Git/widgets",
+    ]
     assert cached_result == result
     assert [variables["after"] for _, variables in calls] == [None, "repo-cursor"]
+    assert all(variables["organization"] == "M-Dot-Git" for _, variables in calls)
+    assert all("organization(login: $organization)" in query for query, _ in calls)
     assert all(variables["first"] == 100 for _, variables in calls)
     assert len(calls) == 2
+
+
+def test_repository_discovery_reports_inaccessible_organization() -> None:
+    client = GitHubClient(
+        "test-token", "https://example.test/graphql", "M-Dot-Git"
+    )
+
+    async def fake_graphql(*_args, **_kwargs):
+        return {"organization": None}
+
+    client.graphql = fake_graphql
+    with pytest.raises(GitHubAPIError) as error:
+        asyncio.run(client.list_repositories())
+
+    assert error.value.status_code == 404
 
 
 def test_repository_not_visible_to_token_is_rejected_before_pr_query() -> None:
